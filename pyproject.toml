@@ -1,0 +1,21 @@
+[project]
+name = "joybridge-gd32"
+version = "0.1.0"
+description = "Offline validation and build tools for the original GD32 8BitDo receiver"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "capstone==5.0.7",
+    "unicorn==2.1.4",
+    "pytest>=8,<10",
+    "hidapi>=0.15.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Unicorn's Windows memory probes use handled SEH exceptions, which pytest's
+# fault handler prints as fatal even when execution succeeds. Process failures
+# and all assertions remain test failures with this plugin disabled.
+addopts = "-p no:faulthandler"

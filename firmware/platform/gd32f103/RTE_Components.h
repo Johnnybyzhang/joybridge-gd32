@@ -1,0 +1,11 @@
+#ifndef REDEV_RTE_COMPONENTS_H
+#define REDEV_RTE_COMPONENTS_H
+/* Keil DFP's standard peripheral component selection, also used by GCC.
+ * Device selection is GD32F10X_MD, matching the pack's GD32F103C8 entry. */
+#define RTE_DEVICE_STDPERIPHERALS_RCU
+#define RTE_DEVICE_STDPERIPHERALS_GPIO
+#define RTE_DEVICE_STDPERIPHERALS_TIMER
+#define RTE_DEVICE_STDPERIPHERALS_USART
+#define RTE_DEVICE_STDPERIPHERALS_DMA
+#define RTE_DEVICE_STDPERIPHERALS_FMC
+#endif
