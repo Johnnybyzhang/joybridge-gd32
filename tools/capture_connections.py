@@ -39,8 +39,7 @@ def main():
             row["host"] = exchange(handle, 0xf4)
             row["controllers"] = exchange(handle, 0xfa, 6)
             row["links"] = exchange(handle, 0xfa, 3)
-            if row["ping"]["firmware_version"]>=0x10024:
-                row.update(exchange(handle, 0xfa, 7))
+            row.update(exchange(handle, 0xfa, 7))
             row["rate"] = exchange(handle, 0xfa, 0)
             for _ in range(24):
                 trace = exchange(handle, 0xf7, cursor)

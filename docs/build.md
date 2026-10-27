@@ -23,7 +23,7 @@ git submodule update --init
 | --- | --- |
 | `third_party/btstack` | BTstack `51e11ce` (v1.8.3) |
 | `third_party/CMSIS_6` | Arm CMSIS 6.3.0 |
-| `vendor` | [joybridge-gd32-vendor](https://github.com/Johnnybyzhang/joybridge-gd32-vendor): GD32F10x DFP 2.0.3, GD32F10x Firmware Library 2.7.0 (USBD), RDA R12 init source, stock 8BitDo images, receiver research data |
+| `vendor` | [joybridge-gd32-vendor](https://github.com/Johnnybyzhang/joybridge-gd32-vendor): GD32F10x DFP 2.0.3, GD32F10x Firmware Library 2.7.0 (USBD), RDA R12 init source and receiver board tables, receiver research notes |
 
 ## Build and test
 
@@ -44,6 +44,4 @@ The 0x10029 release image has SHA-256 `7a443f7c3b88436b6a54c04f3707e09e66fb6ffe3
 ## Other tools
 
 - `tools/generate_rda_tables.py` regenerates the radio tables on its own.
-- `tools/recover_rda.py` traces the stock firmware's radio initialization in an emulator.
-- `tools/verify_inputs.py` checks the research bundles in `vendor/research` against their `SHA256SUMS.txt`.
 - `third_party/8cryptdo/cryptdo8.py` decrypts and encrypts 8BitDo `.dat` update files.

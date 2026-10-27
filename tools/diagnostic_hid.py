@@ -1,4 +1,4 @@
-"""Ping only the custom 8BitDo HID Diagnostic; optionally request original BL."""
+"""Query the JoyBridge maintenance HID interface, or switch the receiver to its bootloader."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -9,8 +9,6 @@ import time
 
 TIMING_MODES = ["active", "sniff5", "sniff7.5", "sniff10", "sniff15", "qos8", "flow8", "sniff500"]
 TIMING_STATES = ["none", "pending", "exiting", "entering", "qos", "done", "failed", "policy", "flow"]
-PACKET_MODES = ["all", "one-slot", "br-three-slot", "three-slot", "br-only"]
-PAGE_SCAN_MODES = ["read", "fast", "restore"]
 
 def exchange(handle, operation, variant=0, seconds=10):
     nonce = secrets.token_bytes(4)
@@ -29,19 +27,10 @@ def exchange(handle, operation, variant=0, seconds=10):
     elif operation == 0xf7:
         struct.pack_into("<H",report,14,variant)
     elif operation == 0xf8:
-        report[6:10]=b"SLOT"; report[14]=variant
-    elif operation==0xfa:
-        report[14]=variant
-    elif operation==0xfb:
-        report[6:10]=b"LINK"; report[14]=variant
-    elif operation==0xfc:
-        report[6:10]=b"TIME"; report[14]=variant
-    elif operation==0xfd:
-        report[6:10]=b"POLL"; report[14]=variant; report[15]=seconds
-    elif operation==0xfe:
-        report[6:10]=b"PKTS"; report[14]=variant
-    elif operation==0xff:
-        report[6:10]=b"SCAN" if variant<3 else b"ACQR"; report[14]=variant
+        report[6:10] = b"SLOT"
+        report[14] = variant
+    elif operation == 0xfa:
+        report[14] = variant
     report[10:14] = nonce
     if handle.write(report) != 64:
         raise RuntimeError("Incomplete numbered HID report write")
@@ -49,32 +38,12 @@ def exchange(handle, operation, variant=0, seconds=10):
     while time.monotonic() < deadline:
         reply = bytes(handle.read(64, 300))
         if len(reply) == 64 and reply[:6] == bytes([0x81, operation]) + b"8BDI" and reply[32:36] == nonce:
-            if operation==0xfe:
-                return {"packet_mode":PACKET_MODES[reply[6]]}
-            if operation==0xfd:
-                return {"output_probe_ms":reply[6],"seconds":reply[7]}
-            if operation==0xfc:
-                return {"requested_timing":TIMING_MODES[reply[6]]}
-            if operation==0xfb:
-                return {"requested_role":reply[6]}
             if operation==0xfa:
-                if variant==8:
-                    return {"acquisition_probe":{"active":bool(reply[6]),
-                            "hid_cid":struct.unpack_from("<H",reply,8)[0],
-                            "remaining_ms":struct.unpack_from("<I",reply,12)[0],
-                            "peers":[dict(zip(['kind','actual_mode','requested_mode','pending','waiting','expected'],reply[o:o+6]))
-                                     for o in (16,24)]}}
                 if variant==7:
-                    if reply[11]==0xa4:
-                        interval,window=struct.unpack_from("<2H",reply,12)
-                        return {"scan_readback":{"phase":reply[6],"status":reply[7],
-                                "links":reply[8],"enable":reply[9],"type":reply[10],
-                                "interval_slots":interval,"window_slots":window}}
-                    interval,window,original_interval,original_window=struct.unpack_from("<4H",reply,12)
-                    return {"page_scan_probe":{"mode":PAGE_SCAN_MODES[reply[6]],"state":reply[7],
-                            "status":reply[8],"original_valid":bool(reply[9]),"type":reply[10],
-                            "original_type":reply[11],"interval_slots":interval,"window_slots":window,
-                            "original_interval_slots":original_interval,"original_window_slots":original_window}}
+                    interval,window=struct.unpack_from("<2H",reply,12)
+                    return {"scan_readback":{"phase":reply[6],"status":reply[7],
+                            "links":reply[8],"enable":reply[9],"type":reply[10],
+                            "interval_slots":interval,"window_slots":window}}
                 if variant==6:
                     peers=[]
                     for index,offset in enumerate((8,36)):
@@ -90,21 +59,6 @@ def exchange(handle, operation, variant=0, seconds=10):
                     return {"active_slot":reply[6],"slot_kind":reply[7],"peers":peers,
                             "joycon_page_scan":{"before":reply[60],"after":reply[61],
                                                 "state":reply[62],"status":reply[63]}}
-                if variant==5:
-                    handle,requested,reported=struct.unpack_from("<HHH",reply,10)
-                    return {"packet_probe":{"mode":PACKET_MODES[reply[6]],
-                            "state":["idle","queued","waiting","done","failed"][reply[7]],
-                            "status":reply[8],"handle":handle,"requested_mask":requested,
-                            "reported_mask":reported,"mask_confirmed":reply[7]==3 and requested==reported,
-                            "requested_at_ms":struct.unpack_from("<I",reply,16)[0],
-                            "local_usable_mask":struct.unpack_from("<H",reply,20)[0]}}
-                if variant==4:
-                    values=struct.unpack_from("<6I",reply,8)+struct.unpack_from("<3I",reply,36)
-                    probe=dict(zip(["packets","intervals","total_us","min_us","max_us",
-                                    "under_7ms","near_8ms","over_9ms","remaining_ms"],values))
-                    probe.update(active=bool(reply[6]),interval_ms=reply[7],
-                                 actual_rate_hz=values[1]*1e6/values[2] if values[2] else None)
-                    return {"output_probe":probe}
                 if variant==3:
                     links=[]
                     for offset in (8,36):
@@ -138,9 +92,6 @@ def exchange(handle, operation, variant=0, seconds=10):
                                    struct.unpack_from("<4I",reply,36))),"bt_rumble":reply[52:60].hex()}
             if operation==0xf8:
                 return {"requested_slot":reply[6]}
-            if operation==0xff:
-                if reply[6]>=3: return {"requested_acquisition":"quiet" if reply[6]==3 else "full"}
-                return {"requested_page_scan":PAGE_SCAN_MODES[reply[6]]}
             if operation==0xf7:
                 names=["unused","command","complete","status","acl_open","acl_close","auth",
                        "key_get","key_put","admit","hid_open","hid_close","epoch","connect","save","usb",
@@ -196,38 +147,27 @@ def receiver_devices():
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--bootloader", action="store_true")
+    p.add_argument("--bootloader", action="store_true", help="Restart into the original 8BitDo bootloader")
     p.add_argument("--out", type=str)
     p.add_argument("--radio-status", action="store_true")
     p.add_argument("--radio-start", type=int, choices=[0,1])
     p.add_argument("--host-status", action="store_true")
     p.add_argument("--pair", action="store_true", help="Start the same pairing window as a button hold")
-    p.add_argument("--slot",type=int,choices=[1,2],help="Select a profile through the diagnostic interface")
-    p.add_argument("--trace",action="store_true",help="Read bounded non-secret Bluetooth event metadata")
+    p.add_argument("--slot",type=int,choices=[1,2],help="Select a profile")
+    p.add_argument("--trace",action="store_true",help="Read recent Bluetooth event metadata")
     p.add_argument("--output-status",action="store_true",help="Inspect USB and Bluetooth rumble forwarding")
     p.add_argument("--rate-status",action="store_true",help="Read HCI/HID publication and timer counters")
-    p.add_argument("--role",choices=["master","slave"],help="Set the incoming Classic role preference and request a live switch; verify actual role with --rate-status")
-    p.add_argument("--timing",choices=TIMING_MODES,help="Negotiate Classic link timing; verify completion and actual interval with --rate-status")
-    p.add_argument("--output-probe-ms",type=int,choices=range(256),help="Temporarily resend current rumble on the ready Pro; 0 stops")
-    p.add_argument("--output-probe-seconds",type=int,choices=range(1,256),default=15)
-    p.add_argument("--packet-mode",choices=PACKET_MODES,help="One-shot standard HCI packet mask experiment")
-    p.add_argument("--page-scan",choices=PAGE_SCAN_MODES,help="Read, temporarily select fast interlaced scan, or restore original settings")
-    p.add_argument("--acquisition",choices=['quiet','full'],help="Temporarily quiet the sole Joy-Con's full-report stream (20 s maximum), or restore full mode")
     p.add_argument("--led-channel",type=int,choices=[0,1,2,4,7])
     p.add_argument("--led-seconds",type=int,choices=range(31),default=10)
     args = p.parse_args()
     import hid
     devices = receiver_devices()
-    if len(devices) != 1:
-        raise RuntimeError(f"Expected exactly one custom diagnostic; found {len(devices)}")
+    if not devices:
+        raise SystemExit("JoyBridge maintenance interface not found")
     handle = hid.device(); handle.open_path(devices[0]["path"]); handle.set_nonblocking(0)
-    result = {"vid": "057e", "pid": format(devices[0]["product_id"],"04x"), "product": devices[0]["product_string"]}
+    result = {"pid": format(devices[0]["product_id"],"04x"), "product": devices[0]["product_string"]}
     try:
         result["ping"] = exchange(handle, 0xf0)
-        if result["ping"]["firmware_version"]>=0x10019 and any((
-            args.role is not None, args.timing is not None, args.output_probe_ms is not None,
-            args.packet_mode is not None, args.page_scan is not None, args.acquisition is not None)):
-            raise RuntimeError("Firmware 0x10019 retired the experimental role/timing/scan/report probes")
         if args.radio_start is not None:
             result["radio_start"] = exchange(handle, 0xf3, args.radio_start)
         if args.radio_status:
@@ -238,57 +178,13 @@ def main():
             result["slot"]=exchange(handle,0xf8,args.slot-1)
         if args.host_status:
             result["host"] = exchange(handle,0xf4)
-            if result["ping"]["firmware_version"]>=0x10013:
-                result["controllers"]=exchange(handle,0xfa,6)
+            result["controllers"]=exchange(handle,0xfa,6)
         if args.output_status:
             result["output"]=exchange(handle,0xf9)
-        if args.role is not None:
-            result["role_request"]=exchange(handle,0xfb,0 if args.role=="master" else 1)
-        if args.timing is not None:
-            if result["ping"]["firmware_version"]<0x1000d:
-                raise RuntimeError("Timing control requires firmware 0x1000d or later")
-            if args.timing=="flow8" and result["ping"]["firmware_version"]<0x1000f:
-                raise RuntimeError("Incoming flow control requires firmware 0x1000f or later")
-            if args.timing=="sniff500" and result["ping"]["firmware_version"]<0x10015:
-                raise RuntimeError("Long sniff diagnostic requires firmware 0x10015 or later")
-            result["timing_request"]=exchange(handle,0xfc,TIMING_MODES.index(args.timing))
-        if args.output_probe_ms is not None:
-            if result["ping"]["firmware_version"]<0x10010:
-                raise RuntimeError("Output-cadence probe requires firmware 0x10010 or later")
-            result["probe_request"]=exchange(handle,0xfd,args.output_probe_ms,args.output_probe_seconds)
-        if args.packet_mode is not None:
-            if result["ping"]["firmware_version"]<0x10011:
-                raise RuntimeError("Packet-mask probe requires firmware 0x10011 or later")
-            result["packet_request"]=exchange(handle,0xfe,PACKET_MODES.index(args.packet_mode))
-        if args.page_scan is not None:
-            if result["ping"]["firmware_version"]<0x10017:
-                raise RuntimeError("Page scan probe requires firmware 0x10017 or later")
-            result["page_scan_request"]=exchange(handle,0xff,PAGE_SCAN_MODES.index(args.page_scan))
-            deadline=time.monotonic()+4
-            while True:
-                result["page_scan"]=exchange(handle,0xfa,7)["page_scan_probe"]
-                if result["page_scan"]["state"] in (13,14) or time.monotonic()>=deadline: break
-                time.sleep(.03)
         if args.rate_status:
-            result["rate"]={**exchange(handle,0xfa),**exchange(handle,0xfa,1)}
-            if result["ping"]["firmware_version"]>=0x10024:
-                result["rate"].update(exchange(handle,0xfa,7))
-            if result["ping"]["firmware_version"]>=0x1000b:
-                result["rate"].update(exchange(handle,0xfa,2))
-            if result["ping"]["firmware_version"]>=0x1000d:
-                result["rate"].update(exchange(handle,0xfa,3))
-            if 0x10010<=result["ping"]["firmware_version"]<0x10019:
-                result["rate"].update(exchange(handle,0xfa,4))
-            if 0x10011<=result["ping"]["firmware_version"]<0x10019:
-                result["rate"].update(exchange(handle,0xfa,5))
-            if 0x10017<=result["ping"]["firmware_version"]<0x10019:
-                result["rate"].update(exchange(handle,0xfa,7))
-            if 0x10018<=result["ping"]["firmware_version"]<0x10019:
-                result["rate"].update(exchange(handle,0xfa,8))
-        if args.acquisition is not None:
-            if result["ping"]["firmware_version"]<0x10018:
-                raise RuntimeError("Acquisition probe requires firmware 0x10018 or later")
-            result['acquisition_request']=exchange(handle,0xff,3 if args.acquisition=='quiet' else 4)
+            result["rate"]={}
+            for page in (0,1,2,3,7):
+                result["rate"].update(exchange(handle,0xfa,page))
         if args.led_channel is not None:
             result["led_test"]=exchange(handle,0xf6,args.led_channel,args.led_seconds)
         if args.trace:
@@ -306,15 +202,11 @@ def main():
         handle.close()
     if args.bootloader:
         deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            boot = hid.enumerate(0x0483, 0x5760)
-            diagnostic = receiver_devices()
-            if len(boot) == 1 and not diagnostic:
-                result["original_bootloader_reenumerated"] = True
-                break
+        while not hid.enumerate(0x0483, 0x5760):
+            if time.monotonic() > deadline:
+                raise SystemExit("Bootloader did not appear")
             time.sleep(0.1)
-        else:
-            raise RuntimeError("Original bootloader did not reenumerate")
+        result["bootloader"] = True
     if args.out:
         from pathlib import Path
         Path(args.out).write_text(json.dumps(result, indent=2)+"\n")

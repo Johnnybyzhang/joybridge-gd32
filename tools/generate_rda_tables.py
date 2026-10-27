@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RDA_SOURCE = ROOT / "vendor/rda5876/rdabt_r12_init.c"
-BOARD_TABLES = ROOT / "vendor/research/8bitdo_receiver_pinout_analysis/evidence/hci_initialization_tables.json"
+BOARD_TABLES = ROOT / "vendor/rda5876/hci_initialization_tables.json"
 
 def vendor_table_rows(name):
     """Select the SDK's ordinary UART, SSP-enabled, non-5990 R12 tables."""

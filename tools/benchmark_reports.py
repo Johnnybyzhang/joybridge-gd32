@@ -42,6 +42,12 @@ def pcap_result(path: Path, tshark: str) -> dict:
     return {"capture":str(path),"clock":"USBPcap transfer completion",**timing(stamps)}
 
 
+def rate_counters(h) -> dict:
+    result = {}
+    for page in (0, 1, 2, 3):
+        result.update(exchange(h, 0xfa, page))
+    return result
+
 def live_result(seconds: int, mode: str) -> dict:
     import hid
     devices=receiver_devices()
@@ -75,14 +81,7 @@ def live_result(seconds: int, mode: str) -> dict:
             if before["connected"]!=1 or before["setup_stage"]!=10:
                 raise RuntimeError("Expected one connected, ready Pro")
             before_time=time.perf_counter()
-            before_rate=None
-            if result["ping"]["firmware_version"]>=0x1000a:
-                before_rate={**exchange(h,0xfa),**exchange(h,0xfa,1)}
-                if result["ping"]["firmware_version"]>=0x1000b:
-                    before_rate.update(exchange(h,0xfa,2))
-                if result["ping"]["firmware_version"]>=0x1000d:
-                    before_rate.update(exchange(h,0xfa,3))
-                before_rate_time=time.perf_counter()
+            before_rate=rate_counters(h); before_rate_time=time.perf_counter()
             h.set_nonblocking(1)
             while h.read(64): pass
             h.set_nonblocking(0)
@@ -100,14 +99,7 @@ def live_result(seconds: int, mode: str) -> dict:
                         stick_motion_reports+=any(abs(a-b)>=32 for a,b in zip(axes(report),axes(previous)))
                     previous=report
             after=exchange(h,0xf4); after_time=time.perf_counter()
-            after_rate=None
-            if before_rate is not None:
-                after_rate={**exchange(h,0xfa),**exchange(h,0xfa,1)}
-                if result["ping"]["firmware_version"]>=0x1000b:
-                    after_rate.update(exchange(h,0xfa,2))
-                if result["ping"]["firmware_version"]>=0x1000d:
-                    after_rate.update(exchange(h,0xfa,3))
-                after_rate_time=time.perf_counter()
+            after_rate=rate_counters(h); after_rate_time=time.perf_counter()
             output=exchange(h,0xf9)
             if output["imu_enabled"]!=enabled:
                 raise RuntimeError("Another host changed the IMU request during measurement")
@@ -118,14 +110,12 @@ def live_result(seconds: int, mode: str) -> dict:
                    "bt_observation_seconds":after_time-before_time,
                    "host_before":before,"host_after":after,"output_after":output}
             phase["bt_publication_hz"]=phase["bt_published_delta"]/phase["bt_observation_seconds"]
-            if before_rate is not None:
-                phase["rate_before"]=before_rate; phase["rate_after"]=after_rate
-                phase["bt_raw_hid_hz"]=((after_rate["hid_full_reports"]-before_rate["hid_full_reports"])&0xffffffff)/(after_rate_time-before_rate_time)
-                phase["timer_delta_histogram"]={k:after_rate["timer_delta_histogram"][k]-v for k,v in before_rate["timer_delta_histogram"].items()}
-                if "uart_idle" in before_rate:
-                    count=after_rate["uart_idle"]["intervals"]-before_rate["uart_idle"]["intervals"]
-                    total=(after_rate["uart_idle"]["total_us"]-before_rate["uart_idle"]["total_us"])&0xffffffff
-                    phase["uart_idle_interval_us"]=total/count if count else None
+            phase["rate_before"]=before_rate; phase["rate_after"]=after_rate
+            phase["bt_raw_hid_hz"]=((after_rate["hid_full_reports"]-before_rate["hid_full_reports"])&0xffffffff)/(after_rate_time-before_rate_time)
+            phase["timer_delta_histogram"]={k:after_rate["timer_delta_histogram"][k]-v for k,v in before_rate["timer_delta_histogram"].items()}
+            count=after_rate["uart_idle"]["intervals"]-before_rate["uart_idle"]["intervals"]
+            total=(after_rate["uart_idle"]["total_us"]-before_rate["uart_idle"]["total_us"])&0xffffffff
+            phase["uart_idle_interval_us"]=total/count if count else None
             result["phases"].append(phase)
             print(json.dumps({k:v for k,v in phase.items() if k not in ("host_before","host_after","rate_before","rate_after","output_after")}),flush=True)
             phase["samples"]=samples

@@ -9,6 +9,5 @@ The root MIT license covers original project code only.
 | Arm CMSIS 6.3.0 | `third_party/CMSIS_6` (submodule) | Apache-2.0 |
 | GigaDevice GD32F10x DFP 2.0.3 and Firmware Library 2.7.0 | `vendor/gd32` | GigaDevice SLA-GD0001 plus BSD-3-Clause source headers |
 | RDA R12 init source (`rdabt_r12_init.c`) | `vendor/rda5876` | RDA notice in the file. See `vendor/rda5876/SOURCE.txt` for provenance. |
-| 8BitDo stock receiver firmware v2.04/v2.05 | `vendor/stock`, `vendor/research` | 8BitDo. Included for interoperability and research. |
 
-`firmware/generated/rda_tables.h` is generated at build time. It contains RDA ROM patches and board values taken from the stock firmware.
+`firmware/generated/rda_tables.h` is generated at build time. It contains RDA ROM patches and receiver board values from `vendor/rda5876/hci_initialization_tables.json`.

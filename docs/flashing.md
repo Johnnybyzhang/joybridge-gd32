@@ -31,4 +31,4 @@ uv run tools/bootloader.py launch                 # leave the bootloader without
 
 ## Back to stock
 
-Run 8BitDo's updater, or package a stock image yourself. Stock update files are in `vendor/stock/`.
+Run 8BitDo's updater. It reinstalls the stock application through the same bootloader.
