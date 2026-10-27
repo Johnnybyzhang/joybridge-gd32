@@ -1,19 +1,21 @@
 """Focused UART/radio checks; no bootloader analysis or hardware access."""
 import struct
+import shutil
 import subprocess
 from pathlib import Path
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC
 
 ROOT = Path(__file__).resolve().parents[1]
+NM = shutil.which("arm-none-eabi-nm")
 BASE = 0x08003400
 
 def emulator(name):
     u = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     u.mem_map(0x08000000, 0x20000)
     u.mem_write(BASE, (ROOT / f"build/{name}.bin").read_bytes())
-    u.mem_map(0x20000000, 0x5000); u.mem_map(0x40000000, 0x30000); u.mem_map(0xE000E000, 0x2000)
-    symbols = subprocess.check_output(["C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe", f"build/{name}.elf"], cwd=ROOT, text=True)
+    u.mem_map(0x20000000, 0x5000); u.mem_map(0x40000000, 0x30000); u.mem_map(0xE000E000, 0x2000); u.mem_map(0xE0001000, 0x1000)
+    symbols = subprocess.check_output([NM, f"build/{name}.elf"], cwd=ROOT, text=True)
     addresses = {p[2]:int(p[0],16) for line in symbols.splitlines() if len(p:=line.split()) == 3}
     return u, addresses
 

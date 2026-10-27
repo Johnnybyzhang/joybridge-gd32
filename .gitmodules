@@ -1,0 +1,10 @@
+[submodule "third_party/btstack"]
+	path = third_party/btstack
+	url = https://github.com/bluekitchen/btstack
+[submodule "third_party/CMSIS_6"]
+	path = third_party/CMSIS_6
+	url = https://github.com/ARM-software/CMSIS_6
+	shallow = true
+[submodule "vendor"]
+	path = vendor
+	url = ../joybridge-gd32-vendor.git

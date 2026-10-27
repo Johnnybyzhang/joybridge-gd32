@@ -1,35 +1,49 @@
 # Building from source
 
-The published source deliberately excludes proprietary input files. Keep a local copy of the owner's stock firmware and backup before replacing the application.
+## Requirements
+
+- [uv](https://docs.astral.sh/uv/) (installs Python 3.12 and the test dependencies)
+- A host C compiler available as `gcc` (Apple's `gcc`/clang works; set `CC` to use something else)
+- Arm GNU toolchain: `arm-none-eabi-gcc`, `objcopy`, `size`, `nm`
+  - macOS: `brew install --cask gcc-arm-embedded`
+  - Debian/Ubuntu: `apt install gcc-arm-none-eabi`
+  - Windows: MSYS2 UCRT64 `mingw-w64-ucrt-x86_64-gcc` and `mingw-w64-ucrt-x86_64-arm-none-eabi-gcc`. `C:/msys64/ucrt64/bin` is searched if the tools are not on `PATH`.
 
 ## Dependencies
 
-Install Astral uv, MSYS2 UCRT64 GCC and `arm-none-eabi-gcc`/binutils. The scripts locate tools on PATH, then use `C:/msys64/ucrt64/bin` as fallback. Install GigaDevice GD32F10x_DFP **2.0.3** and Arm CMSIS **6.3.0** with the Arm/Keil pack manager. `CMSIS_PACK_ROOT`, `GD32_DFP_ROOT`, and `ARM_CMSIS_ROOT` can override installed paths.
+All dependencies are git submodules, so a recursive clone fetches everything:
 
-Obtain official **GD32F10x Firmware Library 2.7.0**, unpack it at `third_party/gd32f10x/GD32F10x_Firmware_Library_V2.7.0`, or set `GD32_FIRMWARE_ROOT` to its root. The build needs `Firmware/GD32F10x_usbd_library`, not USBFS. See [notices](../THIRD_PARTY.md).
-
-```powershell
-git clone https://github.com/bluekitchen/btstack third_party/btstack
-git -C third_party/btstack checkout 51e11ce3692abfe31b4ee3d66cffdeb1ae1626f2
-uv sync --locked --python 3.12
+```sh
+git clone --recursive https://github.com/Johnnybyzhang/joybridge-gd32
+# or, in an existing clone:
+git submodule update --init
 ```
 
-## Local radio tables
+| Path | Source |
+| --- | --- |
+| `third_party/btstack` | BTstack `51e11ce` (v1.8.3) |
+| `third_party/CMSIS_6` | Arm CMSIS 6.3.0 |
+| `vendor` | [joybridge-gd32-vendor](https://github.com/Johnnybyzhang/joybridge-gd32-vendor): GD32F10x DFP 2.0.3, GD32F10x Firmware Library 2.7.0 (USBD), RDA R12 init source, stock 8BitDo images, receiver research data |
 
-Supply the pinned RDA source listed in THIRD_PARTY.md as `private/rdabt_r12_init.c`. The generator verifies its Git blob identity. Supply your legally obtained stock v2.05 update as `private/v2.05.dat` and decrypt locally with the included MIT tool:
+## Build and test
 
-```powershell
-uv run --offline python third_party/8cryptdo/cryptdo8.py decrypt private/v2.05.dat -c gd32 -o private/v2.05_decrypted.bin
-uv run --offline python tools/generate_rda_tables.py --stock-app private/v2.05_decrypted.bin --rda-source private/rdabt_r12_init.c
+```sh
+uv sync
+uv run tools/build.py
+uv run pytest -q
 ```
 
-The supported decrypted application SHA-256 is `36817322fc13106cb0663b6d84edb8f3fb35dd6b94722f514675e83350b84b83`. Different firmware layouts are rejected, not parsed using guessed offsets. The generated header is private build output and is ignored by Git.
+`build.py` builds and runs the native bridge, Nintendo protocol and real-BTstack host tests. It then generates `firmware/generated/rda_tables.h` from `vendor/`, builds the firmware, and builds the ARM fixtures that the pytest emulator tests use. Use `--host-only` to run just the native tests. If the ARM build is missing, `pytest` runs `build.py` first.
 
-```powershell
-uv run --offline python tools/build.py
-uv run --offline pytest -q
-```
+The output to flash is `build/joybridge.bin`.
 
-`build.py` runs native bridge, Nintendo protocol and real-BTstack host tests, then builds the ARM application and SDK fixtures. The flashable output is `build/hid-diagnostic.bin` plus its matching JSON manifest. Historical diagnostic names remain to preserve tool compatibility.
+## Reproducing the release binary
 
-`research/` contains archived offline tests that require the original private analysis bundles. They are not part of the public default test run. Older experimental probe commands remain for research and are rejected by current firmware where retired.
+The 0x10029 release image has SHA-256 `7a443f7c3b88436b6a54c04f3707e09e66fb6ffe32509bd9f3154a06c1bab732`. It was built with MSYS2 UCRT64 `arm-none-eabi-gcc` 13.4.0. The sources produce identical code on other toolchains, but the image bytes differ. For example, Arm GNU Toolchain 13.3.Rel1 emits a 152-byte-smaller image because its linker merges duplicate string constants and its compiler emits a slightly smaller `gap_inquiry_stop`.
+
+## Other tools
+
+- `tools/generate_rda_tables.py` regenerates the radio tables on its own.
+- `tools/recover_rda.py` traces the stock firmware's radio initialization in an emulator.
+- `tools/verify_inputs.py` checks the research bundles in `vendor/research` against their `SHA256SUMS.txt`.
+- `third_party/8cryptdo/cryptdo8.py` decrypts and encrypts 8BitDo `.dat` update files.

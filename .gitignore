@@ -1,22 +1,9 @@
-# Local dependencies and vendor-derived output never enter the source release.
 .venv/
 __pycache__/
 .pytest_cache/
 build/
 private/
-golden/
 firmware/generated/
-third_party/*
-!third_party/8cryptdo/
-*.bin
-*.dat
-*.elf
 *.o
-*.a
+*.elf
 *.map
-*.hex
-*.pcap
-*.pcapng
-*.zip
-*.7z
-*.log

@@ -2,6 +2,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import struct
+import shutil
 import subprocess
 import sys
 import pytest
@@ -9,17 +10,17 @@ from unicorn import Uc, UcError, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_
 from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_PRIMASK
 
 ROOT = Path(__file__).resolve().parents[1]
+NM = shutil.which("arm-none-eabi-nm")
 sys.path.insert(0, str(ROOT / "tools"))
 from check_image import APP_BASE, validate
 from package_image import package
 
 @pytest.fixture(scope="session")
 def image():
-    subprocess.run([sys.executable, str(ROOT / "tools/build.py")], cwd=ROOT, check=True)
     return (ROOT / "build/startup-diagnostic.bin").read_bytes()
 
 def flash_backup():
-    return (ROOT / "8bitdo_bootloader_reuse_analysis/full_backup/backup-01/flash_backup.bin").read_bytes()
+    return (ROOT / "vendor/research/8bitdo_bootloader_reuse_analysis/full_backup/backup-01/flash_backup.bin").read_bytes()
 
 def test_original_loader_handoff_and_new_startup(image):
     flash = bytearray(flash_backup())
@@ -52,10 +53,7 @@ def test_original_loader_handoff_and_new_startup(image):
     assert len([a for a, _, v in writes if 0xE000E180 <= a < 0xE000E1A0 and v == 0xFFFFFFFF]) == 8
     assert len([a for a, _, v in writes if 0xE000E280 <= a < 0xE000E2A0 and v == 0xFFFFFFFF]) == 8
     assert not any(0x08000000 <= a < 0x08020000 or 0x40000000 <= a < 0x60000000 for a, _, _ in writes)
-    arm_nm = Path("C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe")
-    if not arm_nm.exists():
-        arm_nm = Path("arm-none-eabi-nm")
-    symbols = subprocess.check_output([str(arm_nm), "build/startup-diagnostic.elf"], cwd=ROOT, text=True)
+    symbols = subprocess.check_output([NM, "build/startup-diagnostic.elf"], cwd=ROOT, text=True)
     addresses = {parts[2]: int(parts[0], 16) for line in symbols.splitlines() if len(parts := line.split()) == 3}
     assert bytes(u.mem_read(addresses["diagnostic_status"], 4)) == struct.pack("<I", 0x52454459)
     assert bytes(u.mem_read(addresses["diagnostic_report"], 1)) == b"\x30"
@@ -97,7 +95,7 @@ def test_board_gpio_and_pwm_without_interrupts(image):
     u.mem_write(APP_BASE,(ROOT / "build/board-test.bin").read_bytes())
     u.mem_map(0x20000000,0x5000)
     u.mem_map(0x40000000,0x30000)
-    symbols = subprocess.check_output(["C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe", "build/board-test.elf"], cwd=ROOT,text=True)
+    symbols = subprocess.check_output([NM, "build/board-test.elf"], cwd=ROOT,text=True)
     addresses = {p[2]:int(p[0],16) for line in symbols.splitlines() if len(p:=line.split())==3}
     def read(address): return struct.unpack("<I",bytes(u.mem_read(address,4)))[0]
     def write(address,value): u.mem_write(address,struct.pack("<I",value))
@@ -155,7 +153,7 @@ def test_official_sdk_usb_enumeration_and_backpressure(image):
     u.reg_write(UC_ARM_REG_SP, 0x20004FE8)
     reset = struct.unpack_from("<I", raw, 4)[0]
     u.emu_start(reset, 0x08000000, count=200000)
-    symbols = subprocess.check_output(["C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe", "build/sdk-usb-test.elf"], cwd=ROOT, text=True)
+    symbols = subprocess.check_output([NM, "build/sdk-usb-test.elf"], cwd=ROOT, text=True)
     addresses = {p[2]:int(p[0],16) for line in symbols.splitlines() if len(p:=line.split())==3}
     status = struct.unpack("<I", bytes(u.mem_read(addresses["sdk_usb_test_status"], 4)))[0]
     assert status == 0x53444b59, f"SDK USB fixture failed at C line {status}"
@@ -173,15 +171,15 @@ def test_rda_sdk_patch_bringup(image):
     u.hook_add(UC_HOOK_CODE, stop_on_wfi)
     u.reg_write(UC_ARM_REG_SP, 0x20004FE8)
     u.emu_start(struct.unpack_from("<I", raw, 4)[0], 0x08000000, count=10000000)
-    symbols = subprocess.check_output(["C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe", "build/radio-test.elf"], cwd=ROOT, text=True)
+    symbols = subprocess.check_output([NM, "build/radio-test.elf"], cwd=ROOT, text=True)
     addresses = {p[2]:int(p[0],16) for line in symbols.splitlines() if len(p:=line.split())==3}
     status = struct.unpack("<I", bytes(u.mem_read(addresses["radio_test_status"], 4)))[0]
     assert status == 0x52444159, f"RDA radio fixture failed: {status:08x}"
 
 
 def test_diagnostic_clock_without_extra_tick_interrupts(image):
-    raw=(ROOT/"build/hid-diagnostic.bin").read_bytes()
-    symbols=subprocess.check_output(["C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe","build/hid-diagnostic.elf"],cwd=ROOT,text=True)
+    raw=(ROOT/"build/joybridge.bin").read_bytes()
+    symbols=subprocess.check_output([NM,"build/joybridge.elf"],cwd=ROOT,text=True)
     addresses={p[2]:int(p[0],16) for line in symbols.splitlines() if len(p:=line.split())==3}
     u=Uc(UC_ARCH_ARM,UC_MODE_THUMB|UC_MODE_MCLASS)
     u.mem_map(0x08000000,0x20000); u.mem_write(APP_BASE,raw)
@@ -197,9 +195,9 @@ def test_diagnostic_clock_without_extra_tick_interrupts(image):
 
 
 def test_live_diagnostic_vectors_and_bootloader_return(image):
-    raw = (ROOT / "build/hid-diagnostic.bin").read_bytes()
+    raw = (ROOT / "build/joybridge.bin").read_bytes()
     validate(raw)
-    symbols = subprocess.check_output(["C:/msys64/ucrt64/bin/arm-none-eabi-nm.exe", "build/hid-diagnostic.elf"], cwd=ROOT, text=True)
+    symbols = subprocess.check_output([NM, "build/joybridge.elf"], cwd=ROOT, text=True)
     addresses = {p[2]:int(p[0],16) for line in symbols.splitlines() if len(p:=line.split())==3}
     for vector, name in [(15,"SysTick_Handler"),(35,"USBD_HP_CAN0_TX_IRQHandler"),(36,"USBD_LP_CAN0_RX0_IRQHandler")]:
         assert struct.unpack_from("<I", raw, vector*4)[0] == addresses[name] | 1
@@ -224,10 +222,10 @@ def test_live_diagnostic_vectors_and_bootloader_return(image):
     assert u.reg_read(UC_ARM_REG_R0) == 1  # ORIGINAL loader selects USB mode
 
 def test_live_diagnostic_update_through_original_loader(image):
-    from flash_diagnostic import packet, ack, installed_bytes
-    raw = (ROOT / "build/hid-diagnostic.bin").read_bytes()
+    from bootloader import update_packet as packet, check_ack, installed_bytes
+    raw = (ROOT / "build/joybridge.bin").read_bytes()
     dat, _ = package(raw, 0x10001)
-    spec = importlib.util.spec_from_file_location("stock_update", ROOT / "8bitdo_bootloader_reuse_analysis/bootloader_analysis/update/emulate_update_handler.py")
+    spec = importlib.util.spec_from_file_location("stock_update", ROOT / "vendor/research/8bitdo_bootloader_reuse_analysis/bootloader_analysis/update/emulate_update_handler.py")
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     model = module.Model()
     tag = flash_backup()[0x341c:0x3428]
@@ -247,9 +245,9 @@ def test_live_diagnostic_update_through_original_loader(image):
     assert bytes(model.uc.mem_read(0x08000000,0x3400)) == flash_backup()[:0x3400]
     assert bytes(model.uc.mem_read(0x0801ec00,0x800)) == flash_backup()[0x1ec00:0x1f400]
     import json
-    capture = json.loads((ROOT / "8bitdo_mcu_access_kit/evidence/selected_capture_packets.json").read_text())
+    capture = json.loads((ROOT / "vendor/research/8bitdo_mcu_access_kit/evidence/selected_capture_packets.json").read_text())
     for frame, tag_reply in [(1347,False),(1351,False),(13833,True)]:
-        ack(bytes.fromhex(next(row["wire_hex"] for row in capture if row["frame"] == frame)),tag=tag_reply)
+        check_ack(bytes.fromhex(next(row["wire_hex"] for row in capture if row["frame"] == frame)), 6 if tag_reply else 0)
 
 @pytest.mark.parametrize("variant",[0,1])
 def test_recovered_rda_initialization_trace(variant):
@@ -259,7 +257,7 @@ def test_recovered_rda_initialization_trace(variant):
     assert sum(e["event"]=="i2c_write" for e in result["events"])==96
     assert sum(e["event"]=="hci_tx" for e in result["events"])==76
     import json
-    tables = {t["name"]:t["entries"] for t in json.loads((ROOT / "8bitdo_receiver_pinout_analysis/evidence/hci_initialization_tables.json").read_text())}
+    tables = {t["name"]:t["entries"] for t in json.loads((ROOT / "vendor/research/8bitdo_receiver_pinout_analysis/evidence/hci_initialization_tables.json").read_text())}
     branch = "conditional_nonzero" if variant else "conditional_zero"
     rows = [*tables["core_initial"], *tables["patches"], *tables[branch], *tables[branch+"_tail"]]
     packets = [bytes.fromhex(e["hex"]) for e in result["events"] if e["event"]=="hci_tx"]

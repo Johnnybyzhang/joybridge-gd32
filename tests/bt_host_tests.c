@@ -53,7 +53,7 @@ static void acl(uint16_t handle,uint16_t cid,const uint8_t *data,size_t n) {
     put16(copy+5,(uint16_t)n); put16(copy+7,cid);
     memcpy(copy+9,data,n); bt_host_receive(copy,n+9);
 }
-static void signal(uint16_t handle,uint8_t code,uint8_t id,const uint8_t *data,size_t n) {
+static void send_signal(uint16_t handle,uint8_t code,uint8_t id,const uint8_t *data,size_t n) {
     uint8_t b[100]={code,id,0,0}; put16(b+2,(uint16_t)n); memcpy(b+4,data,n); acl(handle,1,b,n+4);
 }
 static void disconnected(uint16_t handle) {
@@ -64,7 +64,7 @@ static uint16_t local_for_remote(uint16_t handle,uint16_t remote) {
     return remote==0x60 ? p->control_cid : p->interrupt_cid;
 }
 static void send_configuration(uint16_t handle,uint16_t local) {
-    uint8_t c[]={0,0,0,0,1,2,64,0}; put16(c,local); signal(handle,4,0x70,c,sizeof(c));
+    uint8_t c[]={0,0,0,0,1,2,64,0}; put16(c,local); send_signal(handle,4,0x70,c,sizeof(c));
 }
 static void pump(void) {
     unsigned iterations=0;
@@ -162,17 +162,17 @@ static void pump(void) {
                 if (code==2) {
                     uint16_t remote=word(d)==PSM_HID_CONTROL ? 0x60 : 0x61;
                     uint8_t response[8]={0}; put16(response,remote); put16(response+2,word(d+2));
-                    signal(handle,3,id,response,sizeof(response));
+                    send_signal(handle,3,id,response,sizeof(response));
                     send_configuration(handle,word(d+2));
                 } else if (code==3 && word(d+4)==0) send_configuration(handle,word(d));
                 else if (code==4) {
                     uint16_t local=local_for_remote(handle,word(d));
                     uint8_t response[]={0,0,0,0,0,0}; put16(response,local);
-                    signal(handle,5,id,response,sizeof(response));
+                    send_signal(handle,5,id,response,sizeof(response));
                 } else if (code==10) {
                     uint8_t response[]={0,0,1,0}; memcpy(response,d,2);
-                    signal(handle,11,id,response,sizeof(response));
-                } else if (code==6) signal(handle,7,id,d,4);
+                    send_signal(handle,11,id,response,sizeof(response));
+                } else if (code==6) send_signal(handle,7,id,d,4);
             } else {
                 peer_t *peer=by_handle(handle); assert(peer);
                 assert(b[9]==0xa2);
@@ -190,7 +190,7 @@ static void incoming_acl(const uint8_t address[6],uint16_t handle) {
     put16(opened+3,handle); reverse_bd_addr(address,opened+5); event(opened,sizeof(opened)); pump();
 }
 static void incoming_channel(uint16_t handle,uint16_t psm,uint16_t remote) {
-    uint8_t c[4]; put16(c,psm); put16(c+2,remote); signal(handle,2,(uint8_t)remote,c,sizeof(c)); pump();
+    uint8_t c[4]; put16(c,psm); put16(c+2,remote); send_signal(handle,2,(uint8_t)remote,c,sizeof(c)); pump();
 }
 static void setup_controller(peer_t *p,uint8_t kind) {
     assert(p->state==PEER_SETUP);

@@ -1,4 +1,4 @@
-"""Validate a RAW application image without opening a device."""
+"""Check that a raw application image is laid out the way the original bootloader expects."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -33,10 +33,9 @@ def validate(image: bytes) -> dict:
             raise ValueError(f"Interrupt vector {index} must point to this application's Thumb code")
     if image[(reset & ~1) - APP_BASE:(reset & ~1) - APP_BASE + 2] != b"\x72\xb6":
         raise ValueError("Reset entry must mask inherited interrupts before using the stack")
-    return {"kind": "startup-diagnostic-only", "base": APP_BASE, "bytes": len(image),
-            "padded_bytes": padded, "erase_end_exclusive": erase_end,
-            "initial_msp": sp, "reset_vector": reset,
-            "sha256": hashlib.sha256(image).hexdigest(), "hardware_tested": False}
+    return {"bytes": len(image), "padded_bytes": padded, "erase_end": hex(erase_end),
+            "initial_msp": hex(sp), "reset_vector": hex(reset),
+            "sha256": hashlib.sha256(image).hexdigest()}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)

@@ -1,15 +1,12 @@
 """Controller patches must never enable an uninitialized jump destination."""
 import re
-import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_every_enabled_rda_rom_patch_has_a_source_and_destination():
-    path=ROOT / "firmware/generated/rda_tables.h"
-    if not path.exists(): pytest.skip("Generate local radio tables first")
-    source = path.read_text()
+    source = (ROOT / "firmware/generated/rda_tables.h").read_text()
     body = source.split("rda_patches[] = {", 1)[1].split("};", 1)[0]
     written = {}
     for address, value in re.findall(r"\{0x([0-9a-f]+)u, 0x([0-9a-f]+)u\}", body):

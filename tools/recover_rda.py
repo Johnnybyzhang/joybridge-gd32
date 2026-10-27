@@ -5,7 +5,6 @@ stubbed; busy-loop time is skipped explicitly. This does NOT qualify timing,
 radio operation, two ACL links, or patch compatibility on physical hardware.
 """
 from __future__ import annotations
-import hashlib
 import json
 from pathlib import Path
 import struct
@@ -13,12 +12,9 @@ from unicorn import Uc, UC_ARCH_ARM, UC_MODE_MCLASS, UC_MODE_THUMB, UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R4, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED = "e2139cea93cf56bc11e8455a23b60d2c61e4d9245e2da74e801901ab7585d1a6"
 
 def recover(variant: int) -> dict:
-    flash = (ROOT / "8bitdo_bootloader_reuse_analysis/full_backup/backup-01/flash_backup.bin").read_bytes()
-    if hashlib.sha256(flash).hexdigest() != EXPECTED:
-        raise ValueError("Stock flash hash differs from the analyzed receiver")
+    flash = (ROOT / "vendor/research/8bitdo_bootloader_reuse_analysis/full_backup/backup-01/flash_backup.bin").read_bytes()
     u = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     u.mem_map(0x08000000, 0x20000); u.mem_write(0x08000000, flash)
     u.mem_map(0x20000000, 0x5000); u.reg_write(UC_ARM_REG_SP, 0x20003FB8)
@@ -79,7 +75,7 @@ def recover(variant: int) -> dict:
     assert [e["baud"] for e in events if e["event"] == "uart_baud"] == [115200,1500000]
     assert [e["hex"] for e in events if e["event"] == "hci_tx"][-2:] == [
         "01 02 fd 0a 80 01 60 00 00 80 60 e3 16 00", "01 02 fd 0a 80 01 40 00 00 80 00 b3 02 06"]
-    return {"variant_ram_2000109a":variant, "stock_sha256":EXPECTED, "hardware_access":False,
+    return {"variant_ram_2000109a":variant, "hardware_access":False,
             "rf_tail_recovered_from_scatterload":[{"register":reg,"value":value} for reg,value in struct.iter_unpack("<HH",rf_tail)],
             "events":events}
 

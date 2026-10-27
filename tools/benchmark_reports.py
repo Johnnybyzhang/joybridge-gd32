@@ -143,7 +143,7 @@ def main():
     parser.add_argument("--seconds",type=int,choices=range(5,121),default=30)
     parser.add_argument("--imu",choices=["off","on","both"],default="both")
     parser.add_argument("--pcap",type=Path)
-    parser.add_argument("--tshark",default="C:/Program Files/Wireshark/tshark.exe")
+    parser.add_argument("--tshark",default="tshark")
     parser.add_argument("--out",type=Path,required=True)
     args=parser.parse_args()
     result=pcap_result(args.pcap,args.tshark) if args.pcap else live_result(args.seconds,args.imu)

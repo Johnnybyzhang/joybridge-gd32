@@ -1,42 +1,34 @@
-# Original-bootloader flashing
+# Flashing
 
-Only the tested GD32F103C8T6 + RDA5876 receiver and supported bootloader revision are covered. Do not assume that another 8BitDo receiver shares its flash layout. The upper flash region used by this board is based on physical evidence; the MCU's nominal C8 capacity alone does not establish compatibility.
+JoyBridge installs through the receiver's original 8BitDo USB bootloader using ordinary application-update packets. The bootloader is never modified, and you can return to stock firmware with 8BitDo's updater at any time.
 
-The flasher uses ordinary bootloader application-update packets. It preserves the bootloader and the device installation stamp, checks the current application header, and reads back the installed application before issuing finish. It does not unlock protection or replace the bootloader. The loader's normal finish routine manages its own scratch pages.
+Supported hardware is the GD32F103C8T6 + RDA5876 receiver whose bootloader code (`0x08000000`–`0x08002FFF`) has SHA-256 `8d733de72baf8cc04ce3ada92e3df39be405b55587a749514c0c756eaad38692`. `bootloader.py` checks this before writing. If you have a different receiver, check its flash layout before passing `--force`.
 
-## First installation
+## Enter the bootloader
 
-Enter the receiver's original bootloader using its power-on button path. Enumerate and select the intended interface (`0483:5760`):
+- From stock firmware or a blank receiver: hold the receiver button while plugging it in. It enumerates as `0483:5760`.
+- From JoyBridge: `uv run tools/diagnostic_hid.py --bootloader`
 
-```powershell
-uv run --offline python tools/usb_readonly_backup.py list
-# Replace 0 with the intended index from list; keep this backup private.
-uv run --offline python tools/usb_readonly_backup.py dump --device-index 0 --length 0x20000 --out private/pre-install
+## Flash
+
+```sh
+uv run tools/bootloader.py flash                  # build/joybridge.bin
+uv run tools/bootloader.py flash path/to/image.bin
 ```
 
-The backup tool performs two matching full reads. Keep the backup and its `status.json` together. The flasher recognizes the tested bootloader by the hash of its code region, without needing another owner's flash dump. It also verifies the selected device path against the backup record. Unsupported revisions fail closed.
+The tool reads the device's 12-byte installation stamp (flash `0x0800341C`), which the bootloader writes back after programming. It saves a copy to `private/device-tag.hex`. It then programs the image, reads it back to verify, and starts it. If verification fails the bootloader stays active, so you can simply flash again.
 
-Build first, then inspect the offline summary:
+If an interrupted update erased the stamp, the tool uses `private/device-tag.hex`. Without that file, pass the stamp yourself with `--tag <24 hex digits>`, taking it from offset `0x341C` of a flash backup.
 
-```powershell
-uv run --offline python tools/flash_diagnostic.py --pre-backup private/pre-install
+## Backup and launch
+
+```sh
+uv run tools/bootloader.py backup                 # private/flash-backup.bin (full 128 KiB)
+uv run tools/bootloader.py launch                 # leave the bootloader without flashing
 ```
 
-Install using a new transaction directory:
+`launch` sends the bootloader's normal finish command. That command erases the bootloader's three scratch pages and starts the installed application.
 
-```powershell
-uv run --offline python tools/flash_diagnostic.py --pre-backup private/pre-install --out private/flash-01 --execute
-```
+## Back to stock
 
-## Subsequent updates
-
-The maintenance HID provides a guarded return to the original bootloader. Reuse the established backup and the previous successful installation record; a fresh full backup is not needed on every update.
-
-```powershell
-uv run --offline python tools/diagnostic_hid.py --bootloader
-uv run --offline python tools/flash_diagnostic.py --pre-backup private/pre-install --previous-install private/flash-01/expected-installed.bin --out private/flash-02 --execute
-```
-
-For rollback to an earlier custom build, pass `--image path/to/hid-diagnostic.bin` with its matching `.json` manifest and the current installation's `--previous-install`. Keep the previous custom build locally. Restoring stock firmware uses the manufacturer's updater and your own firmware files; no stock image is distributed here.
-
-Readback failure deliberately leaves the loader active. Do not blindly retry an ambiguous finish operation. Transaction records, backup files and generated packages remain private.
+Run 8BitDo's updater, or package a stock image yourself. Stock update files are in `vendor/stock/`.

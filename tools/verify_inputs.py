@@ -9,7 +9,7 @@ BUNDLES = ["8bitdo_bootloader_reuse_analysis", "8bitdo_mcu_access_kit", "8bitdo_
 def verify() -> list[dict]:
     results = []
     for name in BUNDLES:
-        base = (ROOT / name).resolve()
+        base = (ROOT / "vendor/research" / name).resolve()
         count = 0
         for line in (base / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
             expected, relative = line.split(maxsplit=1)

@@ -2,7 +2,7 @@
 
 Focused Nintendo Pro Controller and paired Joy-Con Bluetooth-to-USB firmware for the original **GD32F103C8T6 + RDA5876** 8BitDo receiver. Keeps the existing bootloader and supports offline saved pairing.
 
-Independent community project; not affiliated with Nintendo, 8BitDo, GigaDevice, or RDA. This source release includes no stock firmware, bootloader image, device backup, or prebuilt firmware.
+Independent community project; not affiliated with Nintendo, 8BitDo, GigaDevice, or RDA.
 
 ## Current release
 
@@ -28,27 +28,34 @@ Connected LED is dim; pairing blinks; missing controllers produce brief pulses. 
 
 USB identities: Pro `057E:2009`, paired Joy-Con profile `057E:200E`, disconnected maintenance interface `057E:20FF`. A standard HID Battery Strength feature reports battery percentage (the lower connected Joy-Con battery). The idle identity exposes no gamepad controls.
 
-## Build, flash, measure
+## Build and flash
 
-Start with [build instructions](docs/build.md), then [bootloader flashing](docs/flashing.md). Hardware and measured limitations are in [hardware notes](docs/hardware.md).
+You need [uv](https://docs.astral.sh/uv/), a host C compiler (`gcc` or `clang` as `gcc`) and the Arm GNU toolchain (`arm-none-eabi-gcc`) on `PATH`. Builds work on macOS, Linux and Windows (MSYS2 UCRT64).
 
-Use Astral **uv**. The supported development path is Windows/PowerShell with MSYS2 UCRT64 GCC and Arm GCC, installed GigaDevice/Arm packs, and the official GD32 USB SDK.
-
-```powershell
-uv sync --locked --python 3.12
-# Obtain dependencies and generate private radio tables as documented first.
-uv run --offline python tools/build.py
-uv run --offline pytest -q
+```sh
+git clone --recursive https://github.com/Johnnybyzhang/joybridge-gd32
+cd joybridge-gd32
+uv sync
+uv run tools/build.py      # host tests + build/joybridge.bin
+uv run pytest -q           # emulator and protocol tests
 ```
 
-For a connected Pro, move both sticks throughout each 30-second phase:
+Put the receiver in bootloader mode (hold its button while plugging it in), then:
 
-```powershell
-uv run --offline python tools/benchmark_reports.py --seconds 30 --imu both --out build/forward-rate.json
+```sh
+uv run tools/bootloader.py flash
 ```
 
-This measures Windows HID read completion and independent receiver Bluetooth counters, not on-air timestamps. Raw reports remain local and should not be published without inspection.
+More detail is in [building](docs/build.md), [flashing](docs/flashing.md) and the [hardware notes](docs/hardware.md).
+
+To measure input rate with a Pro Controller connected (keep moving both sticks):
+
+```sh
+uv run tools/benchmark_reports.py --seconds 30 --imu both --out build/forward-rate.json
+```
+
+This measures HID read completion on the host together with the receiver's own Bluetooth counters. It does not capture on-air timestamps.
 
 ## Licensing
 
-Original project code is **MIT**. Included 8CryptDo code retains AeroModes' MIT notice. Dependencies have separate terms: notably BTstack's noncommercial license and the RDA source's restrictive notice. This is not a claim that the complete linked firmware is MIT or commercially licensed. See [third-party notices](THIRD_PARTY.md).
+Original project code is **MIT**. Dependencies keep their own terms: BTstack is licensed for noncommercial use only, and the RDA, GigaDevice and 8BitDo files in the `vendor` submodule keep their original notices. As a result, the complete linked firmware is not MIT-licensed. See [third-party notices](THIRD_PARTY.md).
